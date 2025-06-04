@@ -76,8 +76,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         clientId: string;
       };
     },
-    // @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: Socket,
   ) {
+    // To stop typing event after the user sends message
+    this.server.to(data.roomId).emit('userStoppedTyping', {
+      clientId: client.id,
+    });
+
     this.server.to(data.roomId).emit('reply', data.message);
     this.messages[data.roomId].push(data.message);
     console.log('messages', this.messages);
@@ -104,6 +109,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
 
         this.server.to(roomId).emit('users', this.roomUsers[roomId]);
+
+        // To stop typing event when the user disconnects
+        this.server.to(roomId).emit('userStoppedTyping', {
+          clientId: client.id,
+        });
       }
     }
 
@@ -128,12 +138,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody()
     data: {
       roomId: string;
-      // userName: string
     },
     @ConnectedSocket() client: Socket,
   ) {
     this.server.to(data.roomId).emit('userStoppedTyping', {
-      // userName: data.userName,
       clientId: client.id,
     });
   }
