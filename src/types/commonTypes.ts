@@ -1,7 +1,11 @@
 export type MessageType = {
   name: string;
   value: string;
-  clientId:string;
+  clientId: string;
+  messageId: string;
+  isEdited?: boolean;
+  editedAt?: string;
+  isDeleted?: boolean;
 };
 
 export type MessageListType = {
