@@ -3,9 +3,10 @@ export type MessageType = {
   value: string;
   clientId: string;
   messageId: string;
-  isEdited?: boolean;
-  editedAt?: string;
-  isDeleted?: boolean;
+  isEdited: boolean;
+  editedAt: string;
+  isDeleted: boolean;
+  replyTo: string;
 };
 
 export type MessageListType = {

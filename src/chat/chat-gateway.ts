@@ -95,6 +95,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       isEdited: false,
       isDeleted: false,
       editedAt: '',
+      replyTo: '',
     };
     this.server.to(data.roomId).emit('reply', newMessage);
     this.messages[data.roomId].push(newMessage);
@@ -128,6 +129,38 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
     console.log('edited messages', this.messages);
+  }
+
+  // USER REPLY TO A MESSAGE
+  @SubscribeMessage('message:replyToMessage')
+  handleReplyToMessage(
+    @MessageBody()
+    data: {
+      roomId: string;
+      message: {
+        name: string;
+        value: string;
+        clientId: string;
+        replyTo: string;
+      };
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    // To stop typing event after the user reply to a message
+    this.server.to(data.roomId).emit('userStoppedTyping', {
+      clientId: client.id,
+    });
+
+    const newMessage = {
+      ...data.message,
+      messageId: uuidv4(),
+      isEdited: false,
+      isDeleted: false,
+      editedAt: '',
+    };
+    this.server.to(data.roomId).emit('reply', newMessage);
+    this.messages[data.roomId].push(newMessage);
+    console.log('reply to messages', this.messages);
   }
 
   // USER DELETE MESSAGE
