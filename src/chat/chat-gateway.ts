@@ -14,6 +14,7 @@ import { Model } from 'mongoose';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
 import { User, UserDocument } from 'src/user/user.schema';
+import { Room, RoomDocument } from 'src/room/room.schema';
 
 import { roomIds } from 'src/constants/commonConstants';
 
@@ -28,6 +29,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
   ) {}
 
   public messages: MessageListType = {};
@@ -76,6 +78,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         password: 'password',
         clientId: client.id,
       });
+
+      // Update the room users in MongoDB
+      await this.roomModel.findOneAndUpdate(
+        { roomId: data.roomId },
+        {
+          $set: {
+            userIds: this.roomUsers[data.roomId].map((u) => u.name),
+          },
+        },
+        { new: true, upsert: true }, // ensures it updates or creates if not found
+      );
     }
 
     console.log(`Client ${client.id} joined room ${data.roomId}`);
@@ -236,7 +249,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // SOCKET DISCONNECTION
-  handleDisconnect(client: Socket) {
+  async handleDisconnect(client: Socket) {
     const { roomId, userName, clientId } = client.data;
 
     if (roomId && userName && clientId) {
@@ -251,6 +264,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
 
         this.server.to(roomId).emit('users', this.roomUsers[roomId]);
+
+        if (this.roomUsers[roomId].length === 0) {
+          // To delete the room from MongoDB if the last user disconnects
+          await this.roomModel.deleteOne({ roomId });
+        } else {
+          // Update the room users in MongoDB
+          await this.roomModel.findOneAndUpdate(
+            { roomId },
+            {
+              $set: {
+                userIds: this.roomUsers[roomId].map((u) => u.name),
+              },
+            },
+            { new: true, upsert: true }, // ensures it updates or creates if not found
+          );
+        }
 
         // To stop typing event when the user disconnects
         this.server.to(roomId).emit('userStoppedTyping', {

@@ -3,7 +3,7 @@ import { Document } from 'mongoose';
 
 export type MessageDocument = Message & Document;
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, versionKey: false })
 export class Message {
   @Prop()
   name: string;

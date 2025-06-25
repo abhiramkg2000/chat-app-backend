@@ -7,6 +7,7 @@ import { RoomModule } from 'src/room/room.module';
 
 import { Message, MessageSchema } from 'src/message/message.schema';
 import { User, UserSchema } from 'src/user/user.schema';
+import { Room, RoomSchema } from 'src/room/room.schema';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { User, UserSchema } from 'src/user/user.schema';
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
       { name: User.name, schema: UserSchema },
+      { name: Room.name, schema: RoomSchema },
     ]),
   ],
   providers: [ChatGateway],
