@@ -9,6 +9,13 @@ import {
 } from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+
+import { Message, MessageDocument } from 'src/message/message.schema';
+import { User, UserDocument } from 'src/user/user.schema';
+
+import { roomIds } from 'src/constants/commonConstants';
 
 import {
   MessageType,
@@ -16,10 +23,13 @@ import {
   RoomUsersType,
 } from 'src/types/commonTypes';
 
-import { roomIds } from 'src/constants/commonConstants';
-
 @WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  constructor(
+    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+  ) {}
+
   public messages: MessageListType = {};
   public roomUsers: { [roomId: string]: RoomUsersType } = {};
 
@@ -27,7 +37,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // USER JOIN ROOM
   @SubscribeMessage('joinroom')
-  handleJoinRoom(
+  async handleJoinRoom(
     @MessageBody() data: { roomId: string; userName: string },
     @ConnectedSocket() client: Socket,
   ) {
@@ -56,8 +66,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       )
     ) {
       this.roomUsers[data.roomId].push({
-        // id: this.roomUsers[data.roomId].length + 1,
         name: data.userName,
+        clientId: client.id,
+      });
+
+      // Add new user to MongoDB
+      await this.userModel.create({
+        name: data.userName,
+        password: 'password',
         clientId: client.id,
       });
     }
@@ -72,7 +88,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // USER ADD MESSAGE
   @SubscribeMessage('message:add')
-  handleNewMessage(
+  async handleNewMessage(
     @MessageBody()
     data: {
       roomId: string;
@@ -99,12 +115,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.server.to(data.roomId).emit('reply', newMessage);
     this.messages[data.roomId].push(newMessage);
+
+    // Add new message to MongoDB
+    await this.messageModel.create({ ...newMessage, roomId: data.roomId });
+
     console.log('added messages', this.messages);
   }
 
   // USER EDIT MESSAGE
   @SubscribeMessage('message:edit')
-  handleEditMessage(
+  async handleEditMessage(
     @MessageBody()
     data: {
       roomId: string;
@@ -128,12 +148,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
+
+    // Update the message in MongoDB
+    await this.messageModel.findOneAndUpdate(
+      { messageId: data.message.messageId },
+      {
+        $set: {
+          ...data.message,
+        },
+      },
+    );
+
     console.log('edited messages', this.messages);
   }
 
   // USER REPLY TO A MESSAGE
   @SubscribeMessage('message:replyToMessage')
-  handleReplyToMessage(
+  async handleReplyToMessage(
     @MessageBody()
     data: {
       roomId: string;
@@ -151,27 +182,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       clientId: client.id,
     });
 
-    const newMessage = {
+    const newReplyMessage = {
       ...data.message,
       messageId: uuidv4(),
       isEdited: false,
       isDeleted: false,
       editedAt: '',
     };
-    this.server.to(data.roomId).emit('reply', newMessage);
-    this.messages[data.roomId].push(newMessage);
+    this.server.to(data.roomId).emit('reply', newReplyMessage);
+    this.messages[data.roomId].push(newReplyMessage);
+
+    // Add the reply message to MongoDB
+    await this.messageModel.create({ ...newReplyMessage, roomId: data.roomId });
+
     console.log('reply to messages', this.messages);
   }
 
   // USER DELETE MESSAGE
   @SubscribeMessage('message:delete')
-  handleDeleteMessage(
+  async handleDeleteMessage(
     @MessageBody()
     data: {
       roomId: string;
       messageId: string;
     },
-    // @ConnectedSocket() client: Socket,
   ) {
     this.messages[data.roomId] = this.messages[data.roomId].map((message) => {
       if (message.messageId === data.messageId) {
@@ -182,6 +216,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
+
+    // Update the isDeleted flag of message in MongoDB
+    await this.messageModel.findOneAndUpdate(
+      { messageId: data.messageId },
+      {
+        $set: {
+          isDeleted: true,
+        },
+      },
+    );
+
     console.log('deleted messages', this.messages);
   }
 
