@@ -13,8 +13,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
-import { User, UserDocument } from 'src/user/user.schema';
-import { Room, RoomDocument } from 'src/room/room.schema';
 
 import { roomIds } from 'src/constants/commonConstants';
 
@@ -28,8 +26,6 @@ import {
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
   ) {}
 
   public messages: MessageListType = {};
@@ -50,15 +46,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.data.roomId = data.roomId;
     client.data.clientId = client.id;
 
-    // If messages is empty
-    if (!this.messages[data.roomId]) {
-      this.messages[data.roomId] = [];
-    }
+    // Fetch messages from MongoDB
+    const dbMessages = await this.messageModel
+      .find({ roomId: data.roomId })
+      .sort({ createdAt: 1 }) // Oldest to newest
+      .select('-_id -createdAt -updatedAt') // To remove the fields from the query result
+      .lean(); // Makes the result as plain JS objects
 
-    // If roomIds is empty
+    // Update the in-memory cache
+    this.messages[data.roomId] = dbMessages || [];
+
+    // If a new room is created
     if (!this.roomUsers[data.roomId]) {
-      roomIds.push(data.roomId);
       this.roomUsers[data.roomId] = [];
+      roomIds.push(data.roomId);
     }
 
     // Add user to room-specific user list
@@ -71,24 +72,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         name: data.userName,
         clientId: client.id,
       });
-
-      // Add new user to MongoDB
-      await this.userModel.create({
-        name: data.userName,
-        password: 'password',
-        clientId: client.id,
-      });
-
-      // Update the room users in MongoDB
-      await this.roomModel.findOneAndUpdate(
-        { roomId: data.roomId },
-        {
-          $set: {
-            userIds: this.roomUsers[data.roomId].map((u) => u.name),
-          },
-        },
-        { new: true, upsert: true }, // ensures it updates or creates if not found
-      );
     }
 
     console.log(`Client ${client.id} joined room ${data.roomId}`);
@@ -264,22 +247,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
 
         this.server.to(roomId).emit('users', this.roomUsers[roomId]);
-
-        if (this.roomUsers[roomId].length === 0) {
-          // To delete the room from MongoDB if the last user disconnects
-          await this.roomModel.deleteOne({ roomId });
-        } else {
-          // Update the room users in MongoDB
-          await this.roomModel.findOneAndUpdate(
-            { roomId },
-            {
-              $set: {
-                userIds: this.roomUsers[roomId].map((u) => u.name),
-              },
-            },
-            { new: true, upsert: true }, // ensures it updates or creates if not found
-          );
-        }
 
         // To stop typing event when the user disconnects
         this.server.to(roomId).emit('userStoppedTyping', {
