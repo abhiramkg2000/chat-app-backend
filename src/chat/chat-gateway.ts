@@ -11,8 +11,10 @@ import { Socket, Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { JwtService } from '@nestjs/jwt';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
+import { User, UserDocument } from 'src/user/user.schema';
 
 import { roomIds } from 'src/constants/commonConstants';
 
@@ -26,6 +28,8 @@ import {
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private readonly jwtService: JwtService,
   ) {}
 
   public messages: MessageListType = {};
@@ -42,7 +46,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.join(data.roomId);
 
     // Store user info on the socket for later use
-    client.data.userName = data.userName;
+    // client.data.userName = data.userName;
     client.data.roomId = data.roomId;
     client.data.clientId = client.id;
 
@@ -73,6 +77,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         clientId: client.id,
       });
     }
+
+    // Get the userId from MongoDB
+    const userId = await this.userModel
+      .findOne({ name: data.userName })
+      .select('_id')
+      .lean();
 
     console.log(`Client ${client.id} joined room ${data.roomId}`);
     console.log('roomUsers', this.roomUsers);
@@ -228,6 +238,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // SOCKET CONNECTION
   handleConnection(client: Socket) {
+    const token = client.handshake.headers.cookie
+      ?.split('; ')
+      .find((c) => c.startsWith('accessToken='))
+      ?.split('=')[1];
+
+    if (!token) {
+      client.disconnect();
+      return;
+    }
+
+    try {
+      const payload = this.jwtService.verify(token);
+      client.data.userName = payload.name;
+      // client.data.accessToken = token;
+    } catch (err) {
+      client.disconnect();
+      return;
+    }
     console.log('client connected', client.id);
   }
 

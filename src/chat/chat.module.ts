@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { JwtModule } from '@nestjs/jwt';
 
 import { ChatGateway } from './chat-gateway';
 import { RoomModule } from 'src/room/room.module';
@@ -21,6 +22,11 @@ import { User, UserSchema } from 'src/user/user.schema';
       { name: Message.name, schema: MessageSchema },
       { name: User.name, schema: UserSchema },
     ]),
+    JwtModule.register({
+      // global: true, // make JwtService globally available
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: '1h' },
+    }),
   ],
   providers: [ChatGateway],
 })
