@@ -14,7 +14,6 @@ export type MessageListType = {
 };
 
 export type RoomUserType = {
-  // id: number;
   name: string;
   clientId: string;
 };

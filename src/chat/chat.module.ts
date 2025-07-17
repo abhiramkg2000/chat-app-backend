@@ -13,7 +13,9 @@ import { User, UserSchema } from 'src/user/user.schema';
   imports: [
     RoomModule,
     UserModule,
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({
+      isGlobal: true, // makes env available everywhere
+    }),
     MongooseModule.forRoot(process.env.MONGO_DB_ATLAS_URI!),
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
