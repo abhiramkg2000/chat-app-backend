@@ -43,53 +43,69 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { roomId: string; userName: string },
     @ConnectedSocket() client: Socket,
   ) {
-    client.join(data.roomId);
-
-    // Store user info on the socket for later use
-    // client.data.userName = data.userName;
-    client.data.roomId = data.roomId;
-    client.data.clientId = client.id;
+    client.join(client.data.roomId);
 
     // Fetch messages from MongoDB
     const dbMessages = await this.messageModel
-      .find({ roomId: data.roomId })
+      .find({ roomId: client.data.roomId })
       .sort({ createdAt: 1 }) // Oldest to newest
       .select('-_id -createdAt -updatedAt') // To remove the fields from the query result
       .lean(); // Makes the result as plain JS objects
 
     // Update the in-memory cache
-    this.messages[data.roomId] = dbMessages || [];
+    this.messages[client.data.roomId] = dbMessages || [];
 
     // If a new room is created
-    if (!this.roomUsers[data.roomId]) {
-      this.roomUsers[data.roomId] = [];
-      roomIds.push(data.roomId);
+    if (!this.roomUsers[client.data.roomId]) {
+      this.roomUsers[client.data.roomId] = [];
+      roomIds.push(client.data.roomId);
     }
 
     // Add user to room-specific user list
-    if (
-      !this.roomUsers[data.roomId].find(
-        (user) => user.name === data.userName && user.clientId === client.id,
-      )
-    ) {
-      this.roomUsers[data.roomId].push({
-        name: data.userName,
+    const userExists = this.roomUsers[client.data.roomId].find(
+      (user) => user.name === client.data.userName,
+    );
+
+    if (!userExists) {
+      this.roomUsers[client.data.roomId].push({
+        name: client.data.userName,
         clientId: client.id,
+      });
+    } else if (userExists) {
+      this.roomUsers[client.data.roomId] = this.roomUsers[
+        client.data.roomId
+      ].map((user) => {
+        if (user.name === client.data.userName) {
+          return {
+            ...user,
+            clientId: client.id,
+          };
+        } else {
+          return user;
+        }
       });
     }
 
     // Get the userId from MongoDB
     const userId = await this.userModel
-      .findOne({ name: data.userName })
+      .findOne({ name: client.data.userName })
       .select('_id')
       .lean();
 
-    console.log(`Client ${client.id} joined room ${data.roomId}`);
+    console.log(`Client ${client.id} joined room ${client.data.roomId}`);
     console.log('roomUsers', this.roomUsers);
 
-    this.server.to(data.roomId).emit('clientId', client.id);
-    this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
-    this.server.to(data.roomId).emit('users', this.roomUsers[data.roomId]);
+    this.server.to(client.data.roomId).emit('user:info', {
+      name: client.data.userName,
+      roomId: client.data.roomId,
+      clientId: client.id,
+    });
+    this.server
+      .to(client.data.roomId)
+      .emit('prefetch', this.messages[client.data.roomId]);
+    this.server
+      .to(client.data.roomId)
+      .emit('users', this.roomUsers[client.data.roomId]);
   }
 
   // USER ADD MESSAGE
@@ -99,7 +115,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     data: {
       roomId: string;
       message: {
-        name: string;
         value: string;
         clientId: string;
       };
@@ -107,23 +122,27 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     // To stop typing event after the user sends message
-    this.server.to(data.roomId).emit('userStoppedTyping', {
+    this.server.to(client.data.roomId).emit('userStoppedTyping', {
       clientId: client.id,
     });
 
     const newMessage = {
       ...data.message,
+      name: client.data.userName,
       messageId: uuidv4(),
       isEdited: false,
       isDeleted: false,
       editedAt: '',
       replyTo: '',
     };
-    this.server.to(data.roomId).emit('reply', newMessage);
-    this.messages[data.roomId].push(newMessage);
+    this.server.to(client.data.roomId).emit('reply', newMessage);
+    this.messages[client.data.roomId].push(newMessage);
 
     // Add new message to MongoDB
-    await this.messageModel.create({ ...newMessage, roomId: data.roomId });
+    await this.messageModel.create({
+      ...newMessage,
+      roomId: client.data.roomId,
+    });
 
     console.log('added messages', this.messages);
   }
@@ -139,21 +158,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     // To stop typing event after the user edits message
-    this.server.to(data.roomId).emit('userStoppedTyping', {
+    this.server.to(client.data.roomId).emit('userStoppedTyping', {
       clientId: client.id,
     });
 
-    this.messages[data.roomId] = this.messages[data.roomId].map((message) => {
-      if (message.messageId === data.message.messageId) {
-        return {
-          ...data.message,
-        };
-      } else {
-        return message;
-      }
-    });
+    this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
+      (message) => {
+        if (message.messageId === data.message.messageId) {
+          return {
+            ...data.message,
+          };
+        } else {
+          return message;
+        }
+      },
+    );
 
-    this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
+    this.server
+      .to(client.data.roomId)
+      .emit('prefetch', this.messages[client.data.roomId]);
 
     // Update the message in MongoDB
     await this.messageModel.findOneAndUpdate(
@@ -175,7 +198,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     data: {
       roomId: string;
       message: {
-        name: string;
         value: string;
         clientId: string;
         replyTo: string;
@@ -184,22 +206,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     // To stop typing event after the user reply to a message
-    this.server.to(data.roomId).emit('userStoppedTyping', {
+    this.server.to(client.data.roomId).emit('userStoppedTyping', {
       clientId: client.id,
     });
 
     const newReplyMessage = {
       ...data.message,
+      name: client.data.userName,
       messageId: uuidv4(),
       isEdited: false,
       isDeleted: false,
       editedAt: '',
     };
-    this.server.to(data.roomId).emit('reply', newReplyMessage);
-    this.messages[data.roomId].push(newReplyMessage);
+    this.server.to(client.data.roomId).emit('reply', newReplyMessage);
+    this.messages[client.data.roomId].push(newReplyMessage);
 
     // Add the reply message to MongoDB
-    await this.messageModel.create({ ...newReplyMessage, roomId: data.roomId });
+    await this.messageModel.create({
+      ...newReplyMessage,
+      roomId: client.data.roomId,
+    });
 
     console.log('reply to messages', this.messages);
   }
@@ -212,16 +238,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       roomId: string;
       messageId: string;
     },
+    @ConnectedSocket() client: Socket,
   ) {
-    this.messages[data.roomId] = this.messages[data.roomId].map((message) => {
-      if (message.messageId === data.messageId) {
-        return { ...message, isDeleted: true };
-      } else {
-        return message;
-      }
-    });
+    this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
+      (message) => {
+        if (message.messageId === data.messageId) {
+          return { ...message, isDeleted: true };
+        } else {
+          return message;
+        }
+      },
+    );
 
-    this.server.to(data.roomId).emit('prefetch', this.messages[data.roomId]);
+    this.server
+      .to(client.data.roomId)
+      .emit('prefetch', this.messages[client.data.roomId]);
 
     // Update the isDeleted flag of message in MongoDB
     await this.messageModel.findOneAndUpdate(
@@ -250,8 +281,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const payload = this.jwtService.verify(token);
+
+      // Store user info on the socket for later use
       client.data.userName = payload.name;
-      // client.data.accessToken = token;
+      client.data.roomId = payload.roomId;
     } catch (err) {
       client.disconnect();
       return;
@@ -288,26 +321,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // USER STARTS TYPING
   @SubscribeMessage('startTyping')
-  handleTyping(
-    @MessageBody() data: { roomId: string; userName: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    this.server.to(data.roomId).emit('userTyping', {
-      userName: data.userName,
+  handleTyping(@ConnectedSocket() client: Socket) {
+    this.server.to(client.data.roomId).emit('userTyping', {
+      userName: client.data.userName,
       clientId: client.id,
     });
   }
 
   // USER STOPPED TYPING
   @SubscribeMessage('stopTyping')
-  handleStopTyping(
-    @MessageBody()
-    data: {
-      roomId: string;
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    this.server.to(data.roomId).emit('userStoppedTyping', {
+  handleStopTyping(@ConnectedSocket() client: Socket) {
+    this.server.to(client.data.roomId).emit('userStoppedTyping', {
       clientId: client.id,
     });
   }

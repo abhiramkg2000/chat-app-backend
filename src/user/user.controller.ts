@@ -29,6 +29,7 @@ export class UserController {
     data: {
       name: string;
       password: string;
+      roomId: string;
     },
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -39,7 +40,10 @@ export class UserController {
     const { validUserName, validUserPassword } = authStatus;
 
     if (validUserName && validUserPassword) {
-      const token = this.jwtService.sign({ name: data.name });
+      const token = this.jwtService.sign({
+        name: data.name,
+        roomId: data.roomId,
+      });
 
       // Set accessToken as HTTP-only cookie
       res.cookie('accessToken', token, {
