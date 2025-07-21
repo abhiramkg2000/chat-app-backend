@@ -48,8 +48,10 @@ export class UserController {
       // Set accessToken as HTTP-only cookie
       res.cookie('accessToken', token, {
         httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        // sameSite: 'lax',
+        // secure: process.env.NODE_ENV === 'production',
+        sameSite: 'none',
+        secure: true,
         maxAge: 1000 * 60 * 60 * 24, // 1 day
       });
     }
@@ -60,8 +62,10 @@ export class UserController {
   logout(@Res({ passthrough: true }) res: Response) {
     res.cookie('accessToken', '', {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      // sameSite: 'lax',
+      // secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      secure: true,
       expires: new Date(0), // set cookie expiration to the past
     });
     return { message: 'Logged out successfully' };
