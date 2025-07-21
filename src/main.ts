@@ -10,7 +10,7 @@ async function bootstrap() {
     // allowedHeaders: '*',
     allowedHeaders: ['Content-Type', 'ngrok-skip-browser-warning'],
     // origin: '*',
-    origin: 'http://localhost:3000', // frontend origin
+    origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000', // frontend origin
     credentials: true, // allow cookies to be sent
   });
 
