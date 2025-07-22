@@ -1,5 +1,5 @@
-import { Controller, Post, Body, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Post, Body, Res, Req, Get } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 
 import { UserService } from './user.service';
@@ -69,5 +69,21 @@ export class UserController {
       expires: new Date(0), // set cookie expiration to the past
     });
     return { message: 'Logged out successfully' };
+  }
+
+  @Get('authentication')
+  async me(@Req() req: Request) {
+    const token = req.cookies['accessToken'];
+
+    if (!token) return { authenticated: false };
+
+    try {
+      await this.jwtService.verifyAsync(token);
+      return {
+        authenticated: true,
+      };
+    } catch (err) {
+      return { authenticated: false };
+    }
   }
 }
