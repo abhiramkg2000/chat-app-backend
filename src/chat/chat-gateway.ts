@@ -16,7 +16,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Message, MessageDocument } from 'src/message/message.schema';
 import { User, UserDocument } from 'src/user/user.schema';
 
-import { roomIds } from 'src/constants/commonConstants';
+import { roomIds, getAllowedOrigins } from 'src/constants/commonConstants';
 
 import {
   MessageType,
@@ -24,7 +24,7 @@ import {
   RoomUsersType,
 } from 'src/types/commonTypes';
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({ cors: { origin: getAllowedOrigins(), credentials: true } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
@@ -294,17 +294,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // SOCKET DISCONNECTION
   async handleDisconnect(client: Socket) {
-    const { roomId, userName, clientId } = client.data;
+    const { roomId, userName } = client.data;
 
-    if (roomId && userName && clientId) {
+    if (roomId && userName) {
       const room = this.roomUsers[roomId];
       if (room) {
         this.roomUsers[roomId] = room.filter((user) => {
-          if (user.name === 'guest') {
-            return user.clientId !== clientId;
-          } else {
-            return user.name !== userName;
-          }
+          return user.name !== userName;
         });
 
         this.server.to(roomId).emit('users', this.roomUsers[roomId]);
