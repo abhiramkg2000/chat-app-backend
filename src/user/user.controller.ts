@@ -72,7 +72,7 @@ export class UserController {
   }
 
   @Get('authentication')
-  async me(@Req() req: Request) {
+  async isAuthenticated(@Req() req: Request) {
     const token = req.cookies['accessToken'];
 
     if (!token) return { authenticated: false };
