@@ -14,7 +14,6 @@ import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
-import { User, UserDocument } from 'src/user/user.schema';
 
 import { roomIds, getAllowedOrigins } from 'src/constants/commonConstants';
 
@@ -28,7 +27,6 @@ import {
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -39,10 +37,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // USER JOIN ROOM
   @SubscribeMessage('joinroom')
-  async handleJoinRoom(
-    @MessageBody() data: { roomId: string; userName: string },
-    @ConnectedSocket() client: Socket,
-  ) {
+  async handleJoinRoom(@ConnectedSocket() client: Socket) {
     client.join(client.data.roomId);
 
     // Fetch messages from MongoDB
@@ -86,12 +81,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
 
-    // Get the userId from MongoDB
-    const userId = await this.userModel
-      .findOne({ name: client.data.userName })
-      .select('_id')
-      .lean();
-
     console.log(`Client ${client.id} joined room ${client.data.roomId}`);
     console.log('roomUsers', this.roomUsers);
 
@@ -113,7 +102,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleNewMessage(
     @MessageBody()
     data: {
-      roomId: string;
       message: {
         value: string;
         clientId: string;
@@ -152,7 +140,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleEditMessage(
     @MessageBody()
     data: {
-      roomId: string;
       message: MessageType;
     },
     @ConnectedSocket() client: Socket,
@@ -196,7 +183,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleReplyToMessage(
     @MessageBody()
     data: {
-      roomId: string;
       message: {
         value: string;
         clientId: string;
@@ -235,7 +221,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleDeleteMessage(
     @MessageBody()
     data: {
-      roomId: string;
       messageId: string;
     },
     @ConnectedSocket() client: Socket,
