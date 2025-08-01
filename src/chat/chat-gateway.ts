@@ -44,8 +44,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const dbMessages = await this.messageModel
       .find({ roomId: client.data.roomId })
       .sort({ createdAt: 1 }) // Oldest to newest
-      .select('-_id -createdAt -updatedAt') // To remove the fields from the query result
+      .select('-_id') // To remove the fields from the query result
       .lean(); // Makes the result as plain JS objects
+
+    console.log({ dbMessages });
 
     // Update the in-memory cache
     this.messages[client.data.roomId] = dbMessages || [];
@@ -120,17 +122,20 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       messageId: uuidv4(),
       isEdited: false,
       isDeleted: false,
-      editedAt: '',
       replyTo: '',
     };
-    this.server.to(client.data.roomId).emit('reply', newMessage);
-    this.messages[client.data.roomId].push(newMessage);
 
     // Add new message to MongoDB
-    await this.messageModel.create({
+    const dbNewMessageDoc = await this.messageModel.create({
       ...newMessage,
       roomId: client.data.roomId,
     });
+
+    const dbNewMessage = dbNewMessageDoc.toObject();
+    const { _id, ...cleanMessage } = dbNewMessage; // To remove _id from the dbMessage
+
+    this.server.to(client.data.roomId).emit('reply', cleanMessage);
+    this.messages[client.data.roomId].push(cleanMessage);
 
     console.log('added messages', this.messages);
   }
@@ -202,16 +207,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       messageId: uuidv4(),
       isEdited: false,
       isDeleted: false,
-      editedAt: '',
     };
-    this.server.to(client.data.roomId).emit('reply', newReplyMessage);
-    this.messages[client.data.roomId].push(newReplyMessage);
 
     // Add the reply message to MongoDB
-    await this.messageModel.create({
+    const dbNewReplyMessageDoc = await this.messageModel.create({
       ...newReplyMessage,
       roomId: client.data.roomId,
     });
+
+    const dbNewReplyMessage = dbNewReplyMessageDoc.toObject();
+    const { _id, ...cleanMessage } = dbNewReplyMessage; // To remove _id from the dbMessage
+
+    this.server.to(client.data.roomId).emit('reply', cleanMessage);
+    this.messages[client.data.roomId].push(cleanMessage);
 
     console.log('reply to messages', this.messages);
   }

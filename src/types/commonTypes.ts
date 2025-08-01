@@ -3,8 +3,9 @@ export type MessageType = {
   value: string;
   clientId: string;
   messageId: string;
+  createdAt?: Date | string;
   isEdited: boolean;
-  editedAt: string;
+  updatedAt?: Date | string;
   isDeleted: boolean;
   replyTo: string;
 };

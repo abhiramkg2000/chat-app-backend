@@ -23,9 +23,6 @@ export class Message {
   @Prop({ default: false })
   isEdited: boolean;
 
-  @Prop()
-  editedAt: string;
-
   @Prop({ default: false })
   isDeleted: boolean;
 
