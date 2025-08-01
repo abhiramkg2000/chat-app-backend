@@ -47,6 +47,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .select('-_id') // To remove the fields from the query result
       .lean(); // Makes the result as plain JS objects
 
+    if (!dbMessages) {
+      throw new Error('No messages found');
+    }
     console.log({ dbMessages });
 
     // Update the in-memory cache
@@ -131,6 +134,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       roomId: client.data.roomId,
     });
 
+    if (!dbNewMessageDoc) {
+      throw new Error('Failed to create message in DB');
+    }
+
     const dbNewMessage = dbNewMessageDoc.toObject();
     const { _id, ...cleanMessage } = dbNewMessage; // To remove _id from the dbMessage
 
@@ -145,7 +152,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleEditMessage(
     @MessageBody()
     data: {
-      message: MessageType;
+      message: {
+        value: string;
+        messageId: string;
+      };
     },
     @ConnectedSocket() client: Socket,
   ) {
@@ -154,11 +164,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       clientId: client.id,
     });
 
+    // Update the message in MongoDB
+    const dbUpdatedMessageDoc = await this.messageModel.findOneAndUpdate(
+      { messageId: data.message.messageId },
+      {
+        $set: {
+          value: data.message.value,
+          isEdited: true,
+        },
+      },
+      { new: true }, // Return the updated document
+    );
+
+    if (!dbUpdatedMessageDoc) {
+      throw new Error('Message not found or update failed');
+    }
+
+    const dbUpdatedMessage = dbUpdatedMessageDoc.toObject();
+    const { _id, ...cleanMessage } = dbUpdatedMessage; // To remove _id from the dbMessage
+
     this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
       (message) => {
         if (message.messageId === data.message.messageId) {
           return {
-            ...data.message,
+            ...cleanMessage,
           };
         } else {
           return message;
@@ -169,16 +198,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server
       .to(client.data.roomId)
       .emit('prefetch', this.messages[client.data.roomId]);
-
-    // Update the message in MongoDB
-    await this.messageModel.findOneAndUpdate(
-      { messageId: data.message.messageId },
-      {
-        $set: {
-          ...data.message,
-        },
-      },
-    );
 
     console.log('edited messages', this.messages);
   }
@@ -215,6 +234,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       roomId: client.data.roomId,
     });
 
+    if (!dbNewReplyMessageDoc) {
+      throw new Error('Failed to create reply message in DB');
+    }
+
     const dbNewReplyMessage = dbNewReplyMessageDoc.toObject();
     const { _id, ...cleanMessage } = dbNewReplyMessage; // To remove _id from the dbMessage
 
@@ -233,6 +256,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     },
     @ConnectedSocket() client: Socket,
   ) {
+    // Update the isDeleted flag of message in MongoDB
+    const dbDeletedMessageDoc = await this.messageModel.findOneAndUpdate(
+      { messageId: data.messageId },
+      {
+        $set: {
+          isDeleted: true,
+        },
+      },
+      { new: true }, // Return the updated document
+    );
+
+    if (!dbDeletedMessageDoc) {
+      throw new Error('Message not found or delete failed');
+    }
+
     this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
       (message) => {
         if (message.messageId === data.messageId) {
@@ -246,16 +284,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server
       .to(client.data.roomId)
       .emit('prefetch', this.messages[client.data.roomId]);
-
-    // Update the isDeleted flag of message in MongoDB
-    await this.messageModel.findOneAndUpdate(
-      { messageId: data.messageId },
-      {
-        $set: {
-          isDeleted: true,
-        },
-      },
-    );
 
     console.log('deleted messages', this.messages);
   }
