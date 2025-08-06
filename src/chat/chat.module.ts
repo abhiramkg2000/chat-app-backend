@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ChatGateway } from './chat-gateway';
 import { RoomModule } from 'src/room/room.module';
 import { UserModule } from 'src/user/user.module';
+import { PingModule } from 'src/ping/ping.module';
 
 import { Message, MessageSchema } from 'src/message/message.schema';
 import { User, UserSchema } from 'src/user/user.schema';
@@ -14,6 +15,7 @@ import { User, UserSchema } from 'src/user/user.schema';
   imports: [
     RoomModule,
     UserModule,
+    PingModule,
     ConfigModule.forRoot({
       isGlobal: true, // makes env available everywhere
     }),
