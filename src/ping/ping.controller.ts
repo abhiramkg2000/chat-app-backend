@@ -4,6 +4,7 @@ import { Controller, Get } from '@nestjs/common';
 export class PingController {
   @Get()
   ping() {
+    console.log('ping received at:', new Date().toLocaleString());
     return { status: 'ok' };
   }
 }
