@@ -14,19 +14,17 @@ import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
+import { Room, RoomDocument } from 'src/room/room.schema';
 
-import { roomIds, getAllowedOrigins } from 'src/constants/commonConstants';
+import { getAllowedOrigins } from 'src/constants/commonConstants';
 
-import {
-  MessageType,
-  MessageListType,
-  RoomUsersType,
-} from 'src/types/commonTypes';
+import { MessageListType, RoomUsersType } from 'src/types/commonTypes';
 
 @WebSocketGateway({ cors: { origin: getAllowedOrigins(), credentials: true } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -58,7 +56,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // If a new room is created
     if (!this.roomUsers[client.data.roomId]) {
       this.roomUsers[client.data.roomId] = [];
-      roomIds.push(client.data.roomId);
+
+      // Add new room to MongoDB
+      const dbNewRoomDoc = await this.roomModel.findOneAndUpdate(
+        { roomId: client.data.roomId },
+        {
+          $setOnInsert: {
+            roomId: client.data.roomId,
+            createdBy: client.data.userName,
+          },
+        },
+        { upsert: true, new: true },
+      );
+
+      console.log('dbNewRoomDoc', dbNewRoomDoc);
+
+      if (!dbNewRoomDoc) {
+        throw new Error('Failed to create room in DB');
+      }
     }
 
     // Add user to room-specific user list

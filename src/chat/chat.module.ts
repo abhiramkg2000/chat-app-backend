@@ -10,6 +10,7 @@ import { PingModule } from 'src/ping/ping.module';
 
 import { Message, MessageSchema } from 'src/message/message.schema';
 import { User, UserSchema } from 'src/user/user.schema';
+import { Room, RoomSchema } from 'src/room/room.schema';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { User, UserSchema } from 'src/user/user.schema';
     MongooseModule.forRoot(process.env.MONGO_DB_ATLAS_URI!),
     MongooseModule.forFeature([
       { name: Message.name, schema: MessageSchema },
+      { name: Room.name, schema: RoomSchema },
       { name: User.name, schema: UserSchema },
     ]),
     JwtModule.register({

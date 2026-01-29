@@ -20,3 +20,8 @@ export type RoomUserType = {
 };
 
 export type RoomUsersType = RoomUserType[];
+
+export type RoomType = {
+  roomId: string;
+  createdBy: string;
+};
