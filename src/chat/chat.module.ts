@@ -7,6 +7,7 @@ import { ChatGateway } from './chat-gateway';
 import { RoomModule } from 'src/room/room.module';
 import { UserModule } from 'src/user/user.module';
 import { PingModule } from 'src/ping/ping.module';
+import { RedisModule } from 'src/redis/redis.module';
 
 import { Message, MessageSchema } from 'src/message/message.schema';
 import { User, UserSchema } from 'src/user/user.schema';
@@ -17,6 +18,7 @@ import { Room, RoomSchema } from 'src/room/room.schema';
     RoomModule,
     UserModule,
     PingModule,
+    RedisModule,
     ConfigModule.forRoot({
       isGlobal: true, // makes env available everywhere
     }),

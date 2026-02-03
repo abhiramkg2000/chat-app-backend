@@ -7,7 +7,9 @@ import { User, UserDocument } from 'src/user/user.schema';
 
 @Injectable()
 export class UserService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
+  ) {}
 
   async registerUser(registerData: { name: string; password: string }) {
     const existingUser = await this.userModel.findOne({

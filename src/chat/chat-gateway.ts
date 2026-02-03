@@ -12,24 +12,28 @@ import { v4 as uuidv4 } from 'uuid';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
+import Redis from 'ioredis';
+import { Inject } from '@nestjs/common';
 
 import { Message, MessageDocument } from 'src/message/message.schema';
 import { Room, RoomDocument } from 'src/room/room.schema';
 
 import { getAllowedOrigins } from 'src/constants/commonConstants';
+import { REDIS_CLIENT } from 'src/redis/redis.provider';
 
-import { MessageListType, RoomUsersType } from 'src/types/commonTypes';
+import { MessageListType } from 'src/types/commonTypes';
 
 @WebSocketGateway({ cors: { origin: getAllowedOrigins(), credentials: true } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
-    @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
-    @InjectModel(Room.name) private roomModel: Model<RoomDocument>,
+    @InjectModel(Message.name)
+    private readonly messageModel: Model<MessageDocument>,
+    @InjectModel(Room.name) private readonly roomModel: Model<RoomDocument>,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly jwtService: JwtService,
   ) {}
 
   public messages: MessageListType = {};
-  public roomUsers: { [roomId: string]: RoomUsersType } = {};
 
   @WebSocketServer() server: Server;
 
@@ -53,10 +57,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Update the in-memory cache
     this.messages[client.data.roomId] = dbMessages || [];
 
-    // If a new room is created
-    if (!this.roomUsers[client.data.roomId]) {
-      this.roomUsers[client.data.roomId] = [];
+    // Fetch room from MongoDB
+    const dbRoom = await this.roomModel
+      .findOne({ roomId: client.data.roomId })
+      .select('-_id') // To remove the fields from the query result
+      .lean(); // Makes the result as plain JS objects
 
+    console.log({ dbRoom });
+
+    const roomExists = !!dbRoom;
+    console.log({ roomExists });
+
+    // If a room does not exist
+    if (!roomExists) {
       // Add new room to MongoDB
       const dbNewRoomDoc = await this.roomModel.findOneAndUpdate(
         { roomId: client.data.roomId },
@@ -76,33 +89,26 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
     }
 
-    // Add user to room-specific user list
-    const userExists = this.roomUsers[client.data.roomId].find(
-      (user) => user.name === client.data.userName,
+    // Add/Update room users to hash
+    await this.redis.hset(
+      `room:${client.data.roomId}:users`,
+      client.data.userName,
+      client.id,
     );
 
-    if (!userExists) {
-      this.roomUsers[client.data.roomId].push({
-        name: client.data.userName,
-        clientId: client.id,
-      });
-    } else if (userExists) {
-      this.roomUsers[client.data.roomId] = this.roomUsers[
-        client.data.roomId
-      ].map((user) => {
-        if (user.name === client.data.userName) {
-          return {
-            ...user,
-            clientId: client.id,
-          };
-        } else {
-          return user;
-        }
-      });
-    }
+    const roomUsers = await this.redis.hgetall(
+      `room:${client.data.roomId}:users`,
+    );
 
+    const formattedRoomUsers = Object.entries(roomUsers).map(
+      ([name, clientId]) => ({
+        name,
+        clientId,
+      }),
+    );
+
+    console.log('Redis room users after connection', formattedRoomUsers);
     console.log(`Client ${client.id} joined room ${client.data.roomId}`);
-    console.log('roomUsers', this.roomUsers);
 
     this.server.to(client.data.roomId).emit('user:info', {
       name: client.data.userName,
@@ -112,9 +118,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server
       .to(client.data.roomId)
       .emit('prefetch', this.messages[client.data.roomId]);
-    this.server
-      .to(client.data.roomId)
-      .emit('users', this.roomUsers[client.data.roomId]);
+    this.server.to(client.data.roomId).emit('users', formattedRoomUsers);
   }
 
   // USER ADD MESSAGE
@@ -333,19 +337,28 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { roomId, userName } = client.data;
 
     if (roomId && userName) {
-      const room = this.roomUsers[roomId];
-      if (room) {
-        this.roomUsers[roomId] = room.filter((user) => {
-          return user.name !== userName;
-        });
+      // Remove room users from hash
+      await this.redis.hdel(`room:${roomId}:users`, userName);
 
-        this.server.to(roomId).emit('users', this.roomUsers[roomId]);
+      const roomUsers = await this.redis.hgetall(
+        `room:${client.data.roomId}:users`,
+      );
 
-        // To stop typing event when the user disconnects
-        this.server.to(roomId).emit('userStoppedTyping', {
-          clientId: client.id,
-        });
-      }
+      const formattedRoomUsers = Object.entries(roomUsers).map(
+        ([name, clientId]) => ({
+          name,
+          clientId,
+        }),
+      );
+
+      console.log('Redis room users after disconnection', formattedRoomUsers);
+
+      this.server.to(roomId).emit('users', formattedRoomUsers);
+
+      // To stop typing event when the user disconnects
+      this.server.to(roomId).emit('userStoppedTyping', {
+        clientId: client.id,
+      });
     }
 
     console.log('client disconnected', client.id);
