@@ -34,7 +34,7 @@ export class UserController {
     @Res({ passthrough: true }) res: Response,
   ) {
     console.log('User login data:', data);
-    console.log('JWT_SECRET at runtime:', process.env.JWT_SECRET);
+    // console.log('JWT_SECRET at runtime:', process.env.JWT_SECRET);
 
     const authStatus = await this.userService.loginUser(data);
     const { validUserName, validUserPassword } = authStatus;

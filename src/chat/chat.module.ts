@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { JwtModule } from '@nestjs/jwt';
 
+import { AuthModule } from 'src/auth/auth.module';
 import { ChatGateway } from './chat-gateway';
 import { RoomModule } from 'src/room/room.module';
 import { UserModule } from 'src/user/user.module';
@@ -19,6 +19,7 @@ import { Room, RoomSchema } from 'src/room/room.schema';
     UserModule,
     PingModule,
     RedisModule,
+    AuthModule,
     ConfigModule.forRoot({
       isGlobal: true, // makes env available everywhere
     }),
@@ -28,11 +29,6 @@ import { Room, RoomSchema } from 'src/room/room.schema';
       { name: Room.name, schema: RoomSchema },
       { name: User.name, schema: UserSchema },
     ]),
-    JwtModule.register({
-      // global: true, // make JwtService globally available
-      secret: process.env.JWT_SECRET,
-      signOptions: { expiresIn: '1h' },
-    }),
   ],
   providers: [ChatGateway],
 })
