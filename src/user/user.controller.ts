@@ -45,13 +45,14 @@ export class UserController {
         roomId: data.roomId,
       });
 
+      // Detect environment (dev/prod)
+      const isProd = process.env.NODE_ENV === 'production';
+
       // Set accessToken as HTTP-only cookie
       res.cookie('accessToken', token, {
         httpOnly: true,
-        // sameSite: 'lax',
-        // secure: process.env.NODE_ENV === 'production',
-        sameSite: 'none',
-        secure: true,
+        sameSite: isProd ? 'none' : 'lax', // cross-site in prod, relaxed in dev
+        secure: isProd, // only send over HTTPS in prod
         maxAge: 1000 * 60 * 60 * 24, // 1 day
       });
     }
@@ -60,12 +61,14 @@ export class UserController {
 
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
+    // Detect environment (dev/prod)
+    const isProd = process.env.NODE_ENV === 'production';
+
+    // Remove accessToken from HTTP-only cookie
     res.cookie('accessToken', '', {
       httpOnly: true,
-      // sameSite: 'lax',
-      // secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      secure: true,
+      sameSite: isProd ? 'none' : 'lax', // cross-site in prod, relaxed in dev
+      secure: isProd, // only send over HTTPS in prod
       expires: new Date(0), // set cookie expiration to the past
     });
     return { message: 'Logged out successfully' };
