@@ -3,9 +3,9 @@ import { Document } from 'mongoose';
 
 export type RoomDocument = Room & Document;
 
-@Schema({ versionKey: false })
+@Schema({ timestamps: true, versionKey: false })
 export class Room {
-  @Prop()
+  @Prop({ unique: true })
   roomId: string;
 
   @Prop()

@@ -12,57 +12,82 @@ export class UserService {
   ) {}
 
   async registerUser(registerData: { name: string; password: string }) {
-    const existingUser = await this.userModel.findOne({
-      name: registerData.name,
-    });
+    try {
+      // Existing user check
+      const existingUser = await this.userModel.findOne({
+        name: registerData.name,
+      });
 
-    if (existingUser) {
+      if (existingUser) {
+        return {
+          message: 'User already exists, please enter a different user name',
+          success: false,
+        };
+      }
+
+      // Hash the password
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(
+        registerData.password,
+        saltRounds,
+      );
+
+      // Register the new user
+      await this.userModel.create({
+        name: registerData.name,
+        password: hashedPassword,
+      });
+
+      return { message: 'User registration successful', success: true };
+    } catch (error) {
+      console.error('Error in register user', error);
       return {
-        message: 'User already exists, please enter a different user name',
+        message: 'Register failed due to server error',
         success: false,
       };
     }
-
-    // Hash the password
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(registerData.password, saltRounds);
-
-    await this.userModel.create({
-      name: registerData.name,
-      password: hashedPassword,
-    });
-
-    return { message: 'User registration successful', success: true };
   }
 
   async loginUser(loginData: { name: string; password: string }) {
-    const response = {
-      message: '',
-      validUserName: true,
-      validUserPassword: true,
-    };
+    try {
+      const response = {
+        message: '',
+        validUserName: true,
+        validUserPassword: true,
+      };
 
-    const existingUser = await this.userModel.findOne({ name: loginData.name });
+      // Existing user check
+      const existingUser = await this.userModel.findOne({
+        name: loginData.name,
+      });
 
-    if (!existingUser) {
-      response.message = 'User does not exist, please check the user name';
-      response.validUserName = false;
-      response.validUserPassword = false;
-    } else {
-      const isPasswordValid = await bcrypt.compare(
-        loginData.password,
-        existingUser.password,
-      );
-
-      if (!isPasswordValid) {
-        response.message = 'Invalid credentials';
-        response.validUserName = true;
+      if (!existingUser) {
+        response.message = 'User does not exist, please check the user name';
+        response.validUserName = false;
         response.validUserPassword = false;
       } else {
-        response.message = 'Login successful';
-      }
-    }
+        const isPasswordValid = await bcrypt.compare(
+          loginData.password,
+          existingUser.password,
+        );
 
-    return response;
+        if (!isPasswordValid) {
+          response.message = 'Invalid credentials';
+          response.validUserName = true;
+          response.validUserPassword = false;
+        } else {
+          response.message = 'Login successful';
+        }
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Error in login user', error);
+      return {
+        message: 'Login failed due to server error',
+        validUserName: false,
+        validUserPassword: false,
+      };
+    }
   }
 }

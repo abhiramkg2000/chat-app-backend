@@ -40,6 +40,7 @@ export class UserController {
     const { validUserName, validUserPassword } = authStatus;
 
     if (validUserName && validUserPassword) {
+      // Sign the JWT token
       const token = this.jwtService.sign({
         name: data.name,
         roomId: data.roomId,
@@ -76,16 +77,21 @@ export class UserController {
 
   @Get('authentication')
   async isAuthenticated(@Req() req: Request) {
-    const token = req.cookies['accessToken'];
-
-    if (!token) return { authenticated: false };
-
     try {
+      const token = req.cookies['accessToken'];
+
+      if (!token) {
+        return { authenticated: false };
+      }
+
+      // Verify the JWT token
       await this.jwtService.verifyAsync(token);
+
       return {
         authenticated: true,
       };
-    } catch (err) {
+    } catch (error) {
+      console.error('Authentication error', error);
       return { authenticated: false };
     }
   }

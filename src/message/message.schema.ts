@@ -14,7 +14,7 @@ export class Message {
   @Prop()
   clientId: string;
 
-  @Prop()
+  @Prop({ unique: true })
   messageId: string;
 
   @Prop()

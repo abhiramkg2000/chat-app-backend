@@ -11,11 +11,14 @@ export class RoomService {
   ) {}
 
   async getRoomIds() {
-    const dbRooms = await this.roomModel
-      .find()
-      .select('-_id roomId createdBy')
-      .lean();
-    console.log('dbRooms', dbRooms);
-    return { rooms: dbRooms.map((room) => room.roomId) };
+    try {
+      // Get all the roomIds from MongoDB
+      const dbRoomIds = await this.roomModel.distinct('roomId');
+      console.log('dbRoomIds', dbRoomIds);
+      return { rooms: dbRoomIds };
+    } catch (error) {
+      console.error('Failed to fetch room IDs from MongoDB', error);
+      return { rooms: [] };
+    }
   }
 }
