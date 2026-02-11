@@ -21,8 +21,6 @@ import { Room, RoomDocument } from 'src/room/room.schema';
 import { getAllowedOrigins } from 'src/constants/commonConstants';
 import { REDIS_CLIENT } from 'src/redis/redis.provider';
 
-import { MessageListType } from 'src/types/commonTypes';
-
 @WebSocketGateway({ cors: { origin: getAllowedOrigins(), credentials: true } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
@@ -32,8 +30,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly jwtService: JwtService,
   ) {}
-
-  public messages: MessageListType = {};
 
   @WebSocketServer() server: Server;
 
@@ -51,9 +47,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         .lean(); // Makes the result as plain JS objects
 
       console.log({ dbMessages });
-
-      // Update the in-memory cache
-      this.messages[client.data.roomId] = dbMessages;
 
       // Fetch room from MongoDB
       const dbRoom = await this.roomModel
@@ -110,9 +103,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         roomId: client.data.roomId,
         clientId: client.id,
       });
-      this.server
-        .to(client.data.roomId)
-        .emit('prefetch', this.messages[client.data.roomId]);
+      client.emit('prefetch', dbMessages);
       this.server.to(client.data.roomId).emit('users', formattedRoomUsers);
     } catch (error) {
       console.error('Error in joinroom', error);
@@ -156,10 +147,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { _id, ...cleanMessage } = dbNewMessage; // To remove _id from the dbMessage
 
       // Emit events
-      this.server.to(client.data.roomId).emit('reply', cleanMessage);
-      this.messages[client.data.roomId].push(cleanMessage);
+      this.server.to(client.data.roomId).emit('messageAdded', cleanMessage);
 
-      console.log('added messages', this.messages);
+      console.log('added message', cleanMessage);
     } catch (error) {
       console.error('Error in message:add', error);
     }
@@ -202,24 +192,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const dbUpdatedMessage = dbUpdatedMessageDoc.toObject();
       const { _id, ...cleanMessage } = dbUpdatedMessage; // To remove _id from the dbMessage
 
-      this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
-        (message) => {
-          if (message.messageId === data.message.messageId) {
-            return {
-              ...cleanMessage,
-            };
-          } else {
-            return message;
-          }
-        },
-      );
-
       // Emit events
-      this.server
-        .to(client.data.roomId)
-        .emit('prefetch', this.messages[client.data.roomId]);
+      this.server.to(client.data.roomId).emit('messageEdited', cleanMessage);
 
-      console.log('edited messages', this.messages);
+      console.log('edited message', cleanMessage);
     } catch (error) {
       console.error('Error in message:edit', error);
     }
@@ -262,10 +238,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const { _id, ...cleanMessage } = dbNewReplyMessage; // To remove _id from the dbMessage
 
       // Emit events
-      this.server.to(client.data.roomId).emit('reply', cleanMessage);
-      this.messages[client.data.roomId].push(cleanMessage);
+      this.server.to(client.data.roomId).emit('messageAdded', cleanMessage);
 
-      console.log('reply to messages', this.messages);
+      console.log('reply message', cleanMessage);
     } catch (error) {
       console.error('Error in message:replyToMessage', error);
     }
@@ -296,22 +271,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         throw new Error('Message not found or delete failed');
       }
 
-      this.messages[client.data.roomId] = this.messages[client.data.roomId].map(
-        (message) => {
-          if (message.messageId === data.messageId) {
-            return { ...message, isDeleted: true };
-          } else {
-            return message;
-          }
-        },
-      );
+      const dbDeletedMessage = dbDeletedMessageDoc.toObject();
+      const { _id, ...cleanMessage } = dbDeletedMessage; // To remove _id from the dbMessage
 
       // Emit events
-      this.server
-        .to(client.data.roomId)
-        .emit('prefetch', this.messages[client.data.roomId]);
+      this.server.to(client.data.roomId).emit('messageDeleted', data.messageId);
 
-      console.log('deleted messages', this.messages);
+      console.log('deleted message', cleanMessage);
     } catch (error) {
       console.error('Error in message:delete', error);
     }
