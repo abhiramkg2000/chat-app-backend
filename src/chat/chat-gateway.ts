@@ -42,11 +42,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Fetch messages from MongoDB
       const dbMessages = await this.messageModel
         .find({ roomId: client.data.roomId })
-        .sort({ createdAt: 1 }) // Oldest to newest
+        .sort({ createdAt: -1 }) // newest to oldest
+        .limit(50) // limit to 50 messages
         .select('-_id') // To remove the fields from the query result
         .lean(); // Makes the result as plain JS objects
 
       console.log({ dbMessages });
+
+      const orderedMessages = dbMessages.reverse(); // latest 50 messages in oldest to newest order
 
       // Fetch room from MongoDB
       const dbRoom = await this.roomModel
@@ -103,7 +106,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         roomId: client.data.roomId,
         clientId: client.id,
       });
-      client.emit('prefetch', dbMessages);
+      client.emit('prefetch', orderedMessages);
       this.server.to(client.data.roomId).emit('users', formattedRoomUsers);
     } catch (error) {
       console.error('Error in joinroom', error);
