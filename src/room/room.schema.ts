@@ -13,3 +13,5 @@ export class Room {
 }
 
 export const RoomSchema = SchemaFactory.createForClass(Room);
+
+RoomSchema.index({ roomId: 1 });

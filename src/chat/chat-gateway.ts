@@ -286,6 +286,38 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  // LOAD OLDER MESSAGES
+  @SubscribeMessage('message:loadOlder')
+  async handleLoadOlderMessages(
+    @MessageBody()
+    data: {
+      oldestMessageDate: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    try {
+      // Filter messages by createdAt less than oldestMessageDate
+      const olderMessages = await this.messageModel
+        .find({
+          roomId: client.data.roomId,
+          createdAt: { $lt: new Date(data.oldestMessageDate) },
+        })
+        .sort({ createdAt: -1 }) // newest to oldest
+        .limit(50) // limit to 50 messages
+        .select('-_id') // To remove the fields from the query result
+        .lean(); // Makes the result as plain JS objects
+
+      const orderedMessages = olderMessages.reverse(); // latest 50 messages in oldest to newest order
+
+      // Emit events
+      client.emit('message:older', orderedMessages);
+
+      console.log('Loaded older messages', orderedMessages);
+    } catch (error) {
+      console.error('Error in message:loadOlder', error);
+    }
+  }
+
   // SOCKET CONNECTION
   handleConnection(client: Socket) {
     try {
